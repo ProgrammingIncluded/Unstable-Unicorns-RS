@@ -1,6 +1,14 @@
-# Unstable Unicorns in Rust
+# Unstable Unicorns in Rust (WIP)
 
 Basic implementation of Unstable Unicorn in Rust. Side-project to better learn Rust.
+**This repository is still in heavy development.**
+
+## Testing
+
+TDD is utilized so tests should always work.
+
+> cargo test
+
 
 ## Active TODOs
 
