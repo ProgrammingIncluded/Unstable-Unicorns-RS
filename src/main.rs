@@ -1,5 +1,6 @@
 mod cards;
 mod state;
+mod game;
 
 
 fn main() {

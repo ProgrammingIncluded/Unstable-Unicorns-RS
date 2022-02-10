@@ -8,6 +8,23 @@ use crate::cards::*;
 pub type Cards = Vec<Box<dyn Card>>;
 pub type Actions = Vec<Action>;
 
+trait QueryCards {
+    fn remove_one_card_with_type<T: 'static + Card>(&self) -> Option<(Box<dyn Card>, Cards)>;
+}
+
+impl QueryCards for Cards {
+    fn remove_one_card_with_type<T: 'static + Card>(&self) -> Option<(Box<dyn Card>, Cards)> {
+        for (idx, c) in self.iter().enumerate() {
+           if c.as_any().is::<T>() {
+                let mut new_qc = self.clone();
+                new_qc.remove(idx);
+                return Some((c.clone(), new_qc));
+            }
+        }
+        return None;
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Player {
     pub hand: Cards,
@@ -55,25 +72,20 @@ impl Board {
 
     /// Draws a specified card if applicable.
     pub fn draw_specific_card<T: 'static + Card>(&self) -> Option<Action> {
-        for (idx, c) in self.deck.iter().enumerate() {
-            if c.as_any().is::<T>() {
-                let mut new_deck = self.deck.clone();
-                new_deck.remove(idx);
-                let new_board = Board {
-                    players: self.players.clone(),
-                    deck: new_deck,
-                    discard: self.discard.clone()
-                };
+        let (c, new_deck) = self.deck.remove_one_card_with_type::<T>()?;
+        if new_deck.len() != self.deck.len() {
+            let new_board = Board {
+                players: self.players.clone(),
+                deck: new_deck.clone(),
+                discard: self.discard.clone()
+            };
 
-
-                return Some(Action {
-                    card: (*c).clone(),
-                    atype: ActionType::Draw,
-                    board: new_board
-                });
-            }
+            return Some(Action {
+                card: c.clone(),
+                atype: ActionType::Draw,
+                board: new_board
+            });
         }
-
         return None;
     }
 
