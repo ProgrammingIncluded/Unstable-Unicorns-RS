@@ -33,30 +33,27 @@ pub struct GameTree {
     root: Link<Node>
 }
 
-// impl GameTree {
-    // // Generates and evalulates the game
-    // fn get_states(player: u8, n: Link<Node>) {
-        // let ep = effect_phase(player, b);
-        // for e in ep {
-            // draw_phase(player, e);
-        // }
-    // }
+impl GameTree {
+    // Generates and evalulates the game
+    fn get_states(&self, player: u8, n: Link<Node>) {
+        let ep = self.effect_phase(player, n);
+        for e in ep {
+            self.draw_phase(player, e);
+        }
+    }
     
-    // fn effect_phase(player: u8, n: Link<Node>) -> Vec<Link<Node>> {
-
-    // }
+    fn effect_phase(&self, player: u8, n: Link<Node>) -> Vec<Link<Node>> {
+        return Vec::new();
+    }
     
-    // fn draw_phase(player: u8, n: Link<Node>) {
+    fn draw_phase(&self, player: u8, n: Link<Node>) -> Vec<Link<Node>> {
+        return Vec::new();
+    }
     
-    // }
-    
-    // fn play_phase(player: u8, n: Link<Node>) -> Vec<Link<Node>> {
-        
-    // }
-// }
-
-
-
+    fn play_phase(&self, player: u8, n: Link<Node>) -> Vec<Link<Node>> {
+        return Vec::new();
+    }
+}
 
 mod GameTest {
     use super::*;
@@ -87,7 +84,8 @@ mod GameTest {
             root: root
         };
 
-        assert!(tree.root.borrow().children[0].borrow().board.deck.len() == 1);
-        assert!(Rc::ptr_eq(&tree.root.borrow().children[0].borrow().parent.as_ref().unwrap().upgrade().unwrap(), &tree.root));
+        let root_borrowed = tree.root.borrow();
+        assert!(root_borrowed.children[0].borrow().board.deck.len() == root_borrowed.board.deck.len() - 1);
+        assert!(Rc::ptr_eq(&root_borrowed.children[0].borrow().parent.as_ref().unwrap().upgrade().unwrap(), &tree.root));
     }
 }

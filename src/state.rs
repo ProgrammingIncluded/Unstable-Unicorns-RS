@@ -5,25 +5,7 @@ use std::fmt;
 // UU
 use crate::cards::*;
 
-pub type Cards = Vec<Box<dyn Card>>;
 pub type Actions = Vec<Action>;
-
-trait QueryCards {
-    fn remove_one_card_with_type<T: 'static + Card>(&self) -> Option<(Box<dyn Card>, Cards)>;
-}
-
-impl QueryCards for Cards {
-    fn remove_one_card_with_type<T: 'static + Card>(&self) -> Option<(Box<dyn Card>, Cards)> {
-        for (idx, c) in self.iter().enumerate() {
-           if c.as_any().is::<T>() {
-                let mut new_qc = self.clone();
-                new_qc.remove(idx);
-                return Some((c.clone(), new_qc));
-            }
-        }
-        return None;
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Player {
@@ -50,6 +32,8 @@ pub struct Board {
 impl Board {
     pub fn new_base_game(player_count: u8) -> Board {
         let deck: Cards = vec![
+            Box::new(Neigh {}),
+            Box::new(Neigh {}),
             Box::new(Neigh {}),
             Box::new(SuperNeigh {})
         ];

@@ -49,6 +49,41 @@ pub trait Card: Debug + DynClone {
 
 dyn_clone::clone_trait_object!(Card);
 
+pub type Cards = Vec<Box<dyn Card>>;
+type CardItem = Box<dyn Card>;
+pub trait QueryCards {
+
+    /// Remove Card from cards.
+    fn remove_one_card_with_type<T: 'static + Card>(&self) -> Option<(CardItem, Cards)>;
+
+    /// Check if card type exists
+    fn has_card<T: 'static + Card>(&self) -> bool;
+
+    /// Counts cards of specific type.
+    fn count_card<T: 'static + Card>(&self) -> usize;
+}
+
+impl QueryCards for Cards {
+    fn remove_one_card_with_type<T: 'static + Card>(&self) -> Option<(Box<dyn Card>, Cards)> {
+        for (idx, c) in self.iter().enumerate() {
+           if c.as_any().is::<T>() {
+                let mut new_qc = self.clone();
+                new_qc.remove(idx);
+                return Some((c.clone(), new_qc));
+            }
+        }
+        return None;
+    }
+
+    fn has_card<T: 'static + Card>(&self) -> bool {
+        return self.iter().any(|x| x.as_any().is::<T>());
+    }
+
+    fn count_card<T: 'static + Card>(&self) -> usize {
+        return self.iter().filter(|x| x.as_any().is::<T>()).count();
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct SuperNeigh {}
 impl Card for SuperNeigh {
@@ -95,6 +130,18 @@ mod CardTest {
 
     fn default_board() -> Board {
         return Board::new_base_game(2);
+    }
+
+    #[test]
+    fn test_has_card() {
+        let board = default_board();
+        assert!(board.deck.has_card::<Neigh>(), "Should contain Neigh");
+        assert!(board.deck.has_card::<SuperNeigh>(), "Should contain SuperNeigh");
+    }
+
+    fn test_count_card() {
+        let board = default_board();
+        assert!(board.deck.count_card::<Neigh>() == 3, "Should contain Neigh");
     }
 
     #[test]
