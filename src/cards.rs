@@ -34,10 +34,10 @@ impl CardType {
 pub trait Card: Debug + DynClone {
     fn ctype(&self) -> CardType;
     fn name(&self) -> &'static str;
-    fn play(self: Box<Self>, player: u8, current_action: Action, history: Actions) -> Option<Actions> { None }
-    fn react(&self, player: u8, current_action: Action, history: Actions) -> Option<Actions> { None }
-    fn destroy(&self, player: u8, current_action: Action, history: Actions) -> Option<Actions> { None }
-    fn steal(&self, player: u8, current_action: Action, history: Actions) -> Option<Actions> { None }
+    fn play(self: Box<Self>, player: usize, history: &Actions) -> Option<Actions> { None }
+    fn react(&self, player: usize, history: &Actions) -> Option<Actions> { None }
+    fn destroy(&self, player: usize, history: &Actions) -> Option<Actions> { None }
+    fn steal(&self, player: usize, history: &Actions) -> Option<Actions> { None }
 
     // For dynamic downcast
     fn as_any(&self) -> &dyn Any;
@@ -89,13 +89,13 @@ pub struct SuperNeigh {}
 impl Card for SuperNeigh {
     fn ctype(&self) -> CardType { CardType::Instant }
     fn name(&self) -> &'static str { "SuperNeigh" }
-    fn play(self: Box<Self>, player: u8, current_action: Action, history: Actions) -> Option<Actions> {
+    fn play(self: Box<Self>, player: usize, history: &Actions) -> Option<Actions> {
         return Some(vec![
             Action {
                 card: self,
                 atype: ActionType::Instant,
-                board: current_action.board.clone(),
-            }, current_action.clone()
+                board: history[0].board.clone(),
+            }, history[0].clone()
         ]);
     }
 
@@ -107,8 +107,9 @@ pub struct Neigh {}
 impl Card for Neigh {
     fn ctype(&self) -> CardType { CardType::Instant }
     fn name(&self) -> &'static str { "Neigh" }
-    fn play(self: Box<Self>, player: u8, current_action: Action, history: Actions) -> Option<Actions> {
-        if current_action.card.as_any().is::<SuperNeigh>() {
+    fn play(self: Box<Self>, player: usize, history: &Actions) -> Option<Actions> {
+        let latest_card = &history[0];
+        if latest_card.card.as_any().is::<SuperNeigh>() {
             return None;
         }
 
@@ -116,8 +117,8 @@ impl Card for Neigh {
             Action {
                 card: self,
                 atype: ActionType::Instant,
-                board: current_action.board.clone()
-            }, current_action.clone()]);
+                board: latest_card.board.clone()
+            }, latest_card.clone()]);
     }
 
     fn as_any(&self) -> &dyn Any { self }
@@ -155,7 +156,7 @@ mod CardTest {
 
         // Force a neigh on the neigh
         let forced_neigh = Box::new(Neigh {});
-        let option = forced_neigh.play(0, neigh_action, vec![]).unwrap();
+        let option = forced_neigh.play(0, &vec![neigh_action]).unwrap();
 
         assert!(option.len() == 2);
         assert!(option[0].card.as_any().is::<Neigh>());
@@ -173,7 +174,7 @@ mod CardTest {
 
         // Force a neigh on the neigh
         let forced_neigh = Box::new(Neigh {});
-        let option = forced_neigh.play(0, neigh_action, vec![]);
+        let option = forced_neigh.play(0, &vec![neigh_action]);
         assert!(option.is_none(), "Cannot neigh a super neigh.");
     }
 

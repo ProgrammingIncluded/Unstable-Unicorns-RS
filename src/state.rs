@@ -75,8 +75,9 @@ impl Board {
 
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ActionType {
+    GameStart,
     Place,
     Instant,
     Steal,
