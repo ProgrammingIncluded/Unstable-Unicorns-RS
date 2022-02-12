@@ -10,13 +10,13 @@ type WeakLink<T> = Weak<RefCell<T>>;
 pub struct Node {
     children: Vec<Link<Node>>,
     parent: Option<WeakLink<Node>>,
-    board: Box<Board>,
+    board: Board,
 }
 
 impl Node {
     fn new(children: Vec<Link<Node>>,
            parent: Option<WeakLink<Node>>,
-           board: Box<Board>) -> Link<Self> {
+           board: Board) -> Link<Self> {
 
         return Rc::new(RefCell::new(
             Node {
@@ -29,28 +29,44 @@ impl Node {
 }
 
 #[derive(Debug)]
-pub struct GameTree {
+struct GameTree {
     root: Link<Node>
 }
 
 impl GameTree {
+    fn new(board: Board) -> GameTree {
+        return GameTree {
+            root: Node::new(
+                vec![],
+                None,
+                board
+            )
+        };
+    }
+}
+
+struct Game {}
+impl Game {
+    fn new() -> Self {
+       return Game {};
+    }
+
     // Generates and evalulates the game
-    fn get_states(&self, player: u8, n: Link<Node>) {
-        let ep = self.effect_phase(player, n);
+    fn get_states(&self, tree: GameTree, player: u8, board: Board) {
+        let ep = self.effect_phase(player, board);
         for e in ep {
-            self.draw_phase(player, e);
         }
     }
     
-    fn effect_phase(&self, player: u8, n: Link<Node>) -> Vec<Link<Node>> {
+    fn effect_phase(&self, player: u8, board: Board) -> Vec<Node> {
         return Vec::new();
     }
     
-    fn draw_phase(&self, player: u8, n: Link<Node>) -> Vec<Link<Node>> {
+    fn draw_phase(&self, player: u8, board: Board) -> Vec<Node> {
         return Vec::new();
     }
     
-    fn play_phase(&self, player: u8, n: Link<Node>) -> Vec<Link<Node>> {
+    fn play_phase(&self, player: u8, board: Board) -> Vec<Node> {
         return Vec::new();
     }
 }
@@ -60,11 +76,19 @@ mod GameTest {
     use crate::cards::*;
 
     #[test]
+    fn test_states() {
+        let game = Game {};
+        let tree = GameTree::new(Board::new_base_game(2));
+        let board_start = tree.root.borrow().board.clone();
+        let result = game.get_states(tree, 0, board_start);
+    }
+
+    #[test]
     fn test_tree() {
         let root = Node::new(
             vec![],
             None,
-            Box::new(Board::new_base_game(2))
+            Board::new_base_game(2)
         );
 
         {
@@ -73,8 +97,8 @@ mod GameTest {
             let leaf = Node::new(
                 vec![],
                 Some(Rc::downgrade(&root)),
-                Box::new(root_value.board.draw_specific_card::<Neigh>()
-                    .unwrap().board)
+                root_value.board.draw_specific_card::<Neigh>()
+                    .unwrap().board
             );
             root_value.children = vec![leaf.clone()];
         }
