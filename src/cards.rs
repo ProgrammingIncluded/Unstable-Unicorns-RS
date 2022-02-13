@@ -90,12 +90,16 @@ impl Card for SuperNeigh {
     fn ctype(&self) -> CardType { CardType::Instant }
     fn name(&self) -> &'static str { "SuperNeigh" }
     fn play(self: Box<Self>, player: usize, history: &Actions) -> Option<Actions> {
+        let latest_action = &history[0];
+        let mut latest_board = latest_action.board.clone();
+        latest_board.players[player].stable.push(self.clone());
         return Some(vec![
             Action {
                 card: self,
                 atype: ActionType::Instant,
-                board: history[0].board.clone(),
-            }, history[0].clone()
+                board: latest_board,
+            },
+            latest_action.clone()
         ]);
     }
 
@@ -108,17 +112,22 @@ impl Card for Neigh {
     fn ctype(&self) -> CardType { CardType::Instant }
     fn name(&self) -> &'static str { "Neigh" }
     fn play(self: Box<Self>, player: usize, history: &Actions) -> Option<Actions> {
-        let latest_card = &history[0];
-        if latest_card.card.as_any().is::<SuperNeigh>() {
+        let latest_action = &history[0];
+        if latest_action.card.as_any().is::<SuperNeigh>() {
             return None;
         }
+
+        let mut latest_board = latest_action.board.clone();
+        latest_board.players[player].stable.push(self.clone());
 
         return Some(vec![
             Action {
                 card: self,
                 atype: ActionType::Instant,
-                board: latest_card.board.clone()
-            }, latest_card.clone()]);
+                board: latest_board
+            },
+            latest_action.clone()
+        ]);
     }
 
     fn as_any(&self) -> &dyn Any { self }
