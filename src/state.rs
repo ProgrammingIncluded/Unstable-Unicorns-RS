@@ -9,6 +9,14 @@ use crate::cards::*;
 pub type Actions = Vec<Action>;
 pub type History = Vec<Rc<Action>>;
 
+macro_rules! add_cards {
+    ($deck:expr, $cls:ident, $num:expr ) => {
+        for _ in 0..$num {
+            $deck.push(Box::new($cls {}));
+        }
+    };
+}
+
 #[derive(Debug, Clone)]
 pub struct Player {
     pub hand: Cards,
@@ -33,12 +41,15 @@ pub struct Board {
 
 impl Board {
     pub fn new_base_game(player_count: u8) -> Board {
-        let deck: Cards = vec![
+        let mut deck: Cards = vec![
             Box::new(Neigh {}),
             Box::new(Neigh {}),
             Box::new(Neigh {}),
             Box::new(SuperNeigh {})
         ];
+
+        // Add number of cards
+        add_cards!(deck, BasicUnicorn, 1);
 
         assert!(player_count >= 2, "Must have atleast two players.");
 

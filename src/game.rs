@@ -53,7 +53,7 @@ impl Game {
     }
 
     // Generates and evalulates the game
-    fn get_states(&self, history: &History, player: usize) {
+    fn get_states(&self, player: usize, history: &History) {
         let ep = self.effect_phase(player, history);
         for e in ep {
             println!("{:?}", e);
@@ -72,40 +72,38 @@ impl Game {
             _ => {assert!(false, "Must be an available action to trigger effect phase.")}
         }
 
-        // Generate initial children's react
-        let generate_children = |start: &Action, history: &History| -> Vec<Action> { 
-            start.board
-                 .players[player]
-                 .stable
-                 .iter()
-                 .filter_map(|x| x.clone().react(player, history))
-                 .collect() 
+        let new_action = Action {
+            card: latest_action.card.clone(),
+            atype: latest_action.atype.clone(),
+            board: latest_action.board.clone()
         };
+        let mut stack: Vec<(Link<Node>, Action, History)> = vec![
+            (Node::new(vec![], None, new_action.clone()),
+             new_action.clone(),
+             history.clone())
+        ];
 
-        // Pair of the node and the path in the tree to node
-        // to represent the actions
-        let mut stack: Vec<(Link<Node>, Action, History)> = Vec::new();
-        {
-            let start_actions: Vec<Action> = generate_children(&latest_action.clone(),&history);
-            let start_nodes: Vec<Link<Node>> = start_actions.iter()
-                                                            .map(|x| Node::new(vec![], None, x.clone()))
-                                                            .collect();
-            for i in 0..start_nodes.len() {
-                stack.push((start_nodes[i].clone(), start_actions[i].clone(), history.clone()));
-            }
-        }
-
-        // Should we try to generate everything?
-        // Yes for now
+        // Should we try to generate everything in a single phase? Yes.
         loop {
             match stack.pop() {
                 Some((node, action, action_history)) => {
+                    let mut new_actions: Vec<Action> = Vec::new();
+                    for card in &action.board.players[player].stable {
+                        if !card.action_playable().contains(&action.atype) {continue;}
+                        match card.clone().react(player, history) {
+                            Some(v) => {new_actions.push(v);}
+                            _ => {continue;}
+                        }
+                    }
+
+                    let parent_rc = Some(Rc::downgrade(&node));
+                    let new_nodes = new_actions.iter().map(|x| Node::new(vec![], parent_rc.clone(), x.clone())).collect();
+                    node.borrow_mut().children = new_nodes;
                 },
                 None => { break; }
             }
         }
 
-        println!("{:?}", stack);
         return vec![];
     }
     
@@ -123,7 +121,7 @@ mod GameTest {
     use crate::cards::*;
 
     #[test]
-    fn test_states() {
+    fn test_effect_phase() {
         let game = Game {};
         let tree = GameTree::new(Action{
             card: Box::new(Neigh {}),
@@ -131,7 +129,7 @@ mod GameTest {
             board: Board::new_base_game(2)
         });
         let history = vec![Rc::new(tree.root.borrow().action.clone())];
-        let result = game.get_states(&history, 0);
+        let result = game.effect_phase(0, &history);
     }
 
     #[test]
@@ -148,12 +146,10 @@ mod GameTest {
 
         {
             let mut root_value = root.borrow_mut();
-    
             let leaf = Node::new(
                 vec![],
                 Some(Rc::downgrade(&root)),
-                root_value.action.board.draw_specific_card::<Neigh>()
-                    .unwrap()
+                root_value.action.board.draw_specific_card::<Neigh>().unwrap()
             );
             root_value.children = vec![leaf.clone()];
         }
@@ -164,6 +160,8 @@ mod GameTest {
         };
 
         let root_borrowed = tree.root.borrow();
+        // Ugly but hopefully never have to do this in real code...
+        // For the sake of a parent reference. Which may not be necessary... See if it is worth keeping.
         assert!(root_borrowed.children[0].borrow().action.board.deck.len() == root_borrowed.action.board.deck.len() - 1);
         assert!(Rc::ptr_eq(&root_borrowed.children[0].borrow().parent.as_ref().unwrap().upgrade().unwrap(), &tree.root));
     }

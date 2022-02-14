@@ -12,6 +12,7 @@ use crate::state::{Actions, Action, ActionType, Board, History};
 
 #[derive(Debug, Clone)]
 enum CardType {
+    Null,
     Instant,
     Magic,
     Downgrade,
@@ -88,15 +89,52 @@ impl QueryCards for Cards {
 }
 
 #[derive(Debug, Clone)]
+pub struct NullCard {}
+impl Card for NullCard {
+    fn action_playable(&self) -> &'static [ActionType] {return &[];}
+    fn ctype(&self) -> CardType { CardType::Null }
+    fn name(&self) -> &'static str { "Null Card" }
+    fn play(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
+        assert!(false, "Should never play a null card.");
+        return None;
+    }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+#[derive(Debug, Clone)]
+pub struct BasicUnicorn {}
+impl Card for BasicUnicorn {
+    fn ctype(&self) -> CardType { CardType::Instant }
+    fn name(&self) -> &'static str { "Basic Unicorn" }
+    fn play(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
+        let latest_action = &history[history.len() -1];
+        let mut latest_board = latest_action.board.clone();
+        latest_board.players[player].stable.push(self.clone());
+
+        return Some(
+            Action {
+                card: self,
+                atype: ActionType::Instant,
+                board: latest_board,
+            }
+        );
+    }
+
+    fn action_playable(&self) -> &'static [ActionType] {
+        return &[
+            ActionType::React,
+            ActionType::EffectStart
+        ];
+    }
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+#[derive(Debug, Clone)]
 pub struct SuperNeigh {}
 impl Card for SuperNeigh {
     fn ctype(&self) -> CardType { CardType::Instant }
-    fn name(&self) -> &'static str { "SuperNeigh" }
+    fn name(&self) -> &'static str { "Super Neigh" }
     fn react(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
-        if history.len() == 0 {
-            return None;
-        }
-
         let latest_action = &history[history.len() -1];
         let mut latest_board = latest_action.board.clone();
         latest_board.discard.push(self.clone());
@@ -125,10 +163,6 @@ impl Card for Neigh {
     fn ctype(&self) -> CardType { CardType::Instant }
     fn name(&self) -> &'static str { "Neigh" }
     fn react(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
-        if history.len() == 0 {
-            return None;
-        }
-
         let latest_action = &history[history.len() -1];
         if latest_action.card.as_any().is::<SuperNeigh>() {
             return None;
@@ -190,6 +224,8 @@ mod CardTest {
         let forced_neigh = Box::new(Neigh {});
         let option = forced_neigh.react(0, &vec![Rc::new(neigh_action)]).unwrap();
         assert!(option.card.as_any().is::<Neigh>());
+        assert!(option.board.discard.len() == 1);
+        assert!(option.board.discard.has_card::<Neigh>());
     }
 
     #[test]
