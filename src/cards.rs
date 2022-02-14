@@ -124,7 +124,7 @@ impl Card for BasicUnicorn {
         return Some(
             Action {
                 card: self,
-                atype: ActionType::Instant,
+                atype: ActionType::Place,
                 board: latest_board,
             }
         );

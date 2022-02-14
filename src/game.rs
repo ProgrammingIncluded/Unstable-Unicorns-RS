@@ -118,8 +118,8 @@ impl Game {
         let latest_action = &history[history.len() - 1];
         let phase_action = Action::new_start(ActionType::DrawStart, latest_action.board.clone());
         let phase_node = Node::new(vec![], None, phase_action.clone());
-        let mut draw_nodes: Vec<Link<Node>> = Vec::new();
 
+        let mut draw_nodes: Vec<Link<Node>> = Vec::new();
         for idx in 0..latest_action.board.deck.len() {
             let mut board_copy = latest_action.board.clone();
             let card = board_copy.deck.remove(idx);
@@ -155,9 +155,36 @@ impl Game {
         return react_node;
     }
     
-    // fn play_phase(&self, player: usize, history: &History) -> Link<Node> {
-        // return Vec::new();
-    // }
+    fn play_phase(&self, player: usize, history: &History) -> Link<Node> {
+        assert!(history.len() >= 1, "There must always be an action to compute.");
+
+        // Create a play node
+        let phase_action = Action::new_start(ActionType::PlayStart, history[history.len() - 1].board.clone());
+        let play_node = Node::new(vec![], None, phase_action.clone());
+
+        let mut play_nodes: Vec<Link<Node>> = Vec::new();
+        for idx in 0..phase_action.board.players[player].hand.len() {
+            let mut board_copy = phase_action.board.clone();
+            let card = board_copy.players[player].hand.remove(idx);
+
+            board_copy.players[player].stable.push(card.clone());
+            let new_action = Action {
+                card: card,
+                atype: ActionType::Place,
+                board: board_copy
+            };
+
+            let mut new_history = history.clone();
+            new_history.push(Rc::new(phase_action.clone()));
+            let new_node = Node::new(vec![], Some(Rc::downgrade(&play_node)), new_action);
+            let react_node = self.react_phase(player, &new_history);
+            new_node.borrow_mut().children = vec![react_node];
+            play_nodes.push(new_node);
+        }
+
+        play_node.borrow_mut().children = play_nodes;
+        return play_node;
+    }
 }
 
 mod GameTest {
