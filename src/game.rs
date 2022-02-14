@@ -55,70 +55,134 @@ impl Game {
     // Generates and evalulates the game
     fn get_states(&self, player: usize, history: &History) {
         let ep = self.effect_phase(player, history);
-        for e in ep {
-            println!("{:?}", e);
-        }
     }
     
-    fn effect_phase(&self, player: usize, history: &History) -> Vec<Link<Node>> {
+    fn effect_phase(&self, player: usize, history: &History) -> Link<Node> {
         // There must always be atleast one action
         assert!(history.len() >= 1, "There must always be an action to compute.");
         // There are really only two possible actions to take
         let latest_action = &history[history.len() - 1];
         match latest_action.atype {
-            ActionType::React => {},
+            ActionType::ReactStart => {},
             ActionType::GameStart => {},
-            ActionType::EffectStart => {},
             _ => {assert!(false, "Must be an available action to trigger effect phase.")}
         }
 
-        let new_action = Action {
-            card: latest_action.card.clone(),
-            atype: latest_action.atype.clone(),
-            board: latest_action.board.clone()
-        };
-        let mut stack: Vec<(Link<Node>, Action, History)> = vec![
-            (Node::new(vec![], None, new_action.clone()),
-             new_action.clone(),
-             history.clone())
-        ];
+        let new_action = Action::new_start(ActionType::ReactStart, latest_action.board.clone());
+        let generate_children = |start: Action, history: History| -> Actions { 
+                                        start.board
+                                        .players[player]
+                                        .stable
+                                        .iter()
+                                        .filter(|x| !start.atype.is_phase() || x.phase_playable().contains(&start.atype))
+                                        .filter_map(|x| x.clone().react(player, &history))
+                                        .collect()
+                                    };
+
+        let result_node = Node::new(vec![], None, new_action.clone());
+        let mut stack: Vec<(Link<Node>, Action, History)> = vec![(
+            result_node.clone(),
+            new_action.clone(),
+            history.clone()
+        )];
 
         // Should we try to generate everything in a single phase? Yes.
         loop {
             match stack.pop() {
                 Some((node, action, action_history)) => {
-                    let mut new_actions: Vec<Action> = Vec::new();
-                    for card in &action.board.players[player].stable {
-                        if !card.action_playable().contains(&action.atype) {continue;}
-                        match card.clone().react(player, history) {
-                            Some(v) => {new_actions.push(v);}
-                            _ => {continue;}
-                        }
-                    }
+                    let mut new_actions: Vec<Action> = generate_children(action, action_history.clone());
 
                     let parent_rc = Some(Rc::downgrade(&node));
-                    let new_nodes = new_actions.iter().map(|x| Node::new(vec![], parent_rc.clone(), x.clone())).collect();
-                    node.borrow_mut().children = new_nodes;
+                    let mut new_nodes: Vec<Link<Node>> = new_actions.iter().map(|x| Node::new(vec![], parent_rc.clone(), x.clone())).collect();
+                    node.borrow_mut().children = new_nodes.clone();
+
+                    match (new_actions.pop(), new_nodes.pop()) {
+                        (Some(a), Some(n)) => {
+                            let mut new_history = action_history.clone();
+                            new_history.push(Rc::new(a.clone()));
+                            stack.push((n, a, new_history));
+                        },
+                        (None, None) => { continue; },
+                        _ => { assert!(false, "Fatal, should have parity."); }
+                    }
                 },
                 None => { break; }
             }
         }
 
-        return vec![];
+        return result_node;
     }
     
-    fn draw_phase(&self, player: usize, board: Board) -> Vec<Link<Node>> {
-        return Vec::new();
+    fn draw_phase(&self, player: usize, history: &History) -> Link<Node> {
+        assert!(history.len() >= 1, "There must always be an action to compute.");
+        let latest_action = &history[history.len() - 1];
+        let phase_action = Action::new_start(ActionType::DrawStart, latest_action.board.clone());
+        let phase_node = Node::new(vec![], None, phase_action.clone());
+        let mut draw_nodes: Vec<Link<Node>> = Vec::new();
+
+        for idx in 0..latest_action.board.deck.len() {
+            let mut board_copy = latest_action.board.clone();
+            let card = board_copy.deck.remove(idx);
+
+            // Add current card to the machine
+            board_copy.players[player].hand.push(card.clone());
+            let new_action = Action {
+                card: card,
+                atype: ActionType::Draw,
+                board: board_copy
+            };
+
+            let mut new_history = history.clone();
+            new_history.push(Rc::new(new_action.clone()));
+            let new_node = Node::new(vec![], Some(Rc::downgrade(&phase_node)), new_action);
+            let react_node = self.react_phase(player, &new_history);
+            new_node.borrow_mut().children = vec![react_node];
+            draw_nodes.push(new_node);
+        }
+
+        phase_node.borrow_mut().children = draw_nodes;
+        return phase_node;
+    }
+
+    fn react_phase(&self, player: usize, history: &History) -> Link<Node> {
+        assert!(history.len() >= 1, "There must always be an action to compute.");
+        // Create a react node
+        let start_action = Action::new_start(ActionType::ReactStart, history[history.len() - 1].board.clone());
+        let mut react_node = Node::new(vec![], None, start_action.clone());
+        let new_node = self.effect_phase(player, &vec![Rc::new(start_action)]);
+        react_node.borrow_mut().children = vec![new_node.clone()];
+        new_node.borrow_mut().parent = Some(Rc::downgrade(&react_node));
+        return react_node;
     }
     
-    fn play_phase(&self, player: usize, board: Board) -> Vec<Link<Node>> {
-        return Vec::new();
-    }
+    // fn play_phase(&self, player: usize, history: &History) -> Link<Node> {
+        // return Vec::new();
+    // }
 }
 
 mod GameTest {
     use super::*;
     use crate::cards::*;
+
+    #[test]
+    fn test_draw_phase() {
+        let game = Game {};
+        let board = Board::new_base_game(2);
+        let deck_count = board.deck.len();
+        let tree = GameTree::new(Action{
+            card: Box::new(Neigh {}),
+            atype: ActionType::GameStart,
+            board: board
+        });
+        let history = vec![Rc::new(tree.root.borrow().action.clone())];
+        let result = game.draw_phase(0, &history);
+
+        for n in &result.borrow().children {
+            let n = n.borrow();
+            assert!(deck_count - n.action.board.deck.len() == 1, "Should have only drawn one card.");
+            assert!(n.action.board.players[0].hand.len() == 1, "Should have one card in hand.");
+        }
+    }
 
     #[test]
     fn test_effect_phase() {

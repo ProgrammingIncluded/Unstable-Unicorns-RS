@@ -41,7 +41,13 @@ pub trait Card: Debug + DynClone {
     fn destroy(&self, player: usize, history: &History) -> Option<Action> { None }
     fn steal(&self, player: usize, history: &History) -> Option<Action> { None }
 
-    fn action_playable(&self) -> &'static [ActionType];
+    /// Determines if the current card can play in a start phase.
+    fn phase_playable(&self) -> &'static [ActionType] {
+        match self.ctype() {
+            CardType::Instant => {return &[ActionType::DrawStart, ActionType::EffectStart, ActionType::ReactStart]}
+            _ => {return &[ActionType::DrawStart, ActionType::EffectStart, ActionType::PlayStart, ActionType::ReactStart]}
+        }
+    }
 
     // For dynamic downcast
     fn as_any(&self) -> &dyn Any;
@@ -90,8 +96,12 @@ impl QueryCards for Cards {
 
 #[derive(Debug, Clone)]
 pub struct NullCard {}
+impl NullCard {
+    pub fn new() -> Box<Self> {
+        return Box::new(NullCard {});
+    }
+}
 impl Card for NullCard {
-    fn action_playable(&self) -> &'static [ActionType] {return &[];}
     fn ctype(&self) -> CardType { CardType::Null }
     fn name(&self) -> &'static str { "Null Card" }
     fn play(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
@@ -120,12 +130,6 @@ impl Card for BasicUnicorn {
         );
     }
 
-    fn action_playable(&self) -> &'static [ActionType] {
-        return &[
-            ActionType::React,
-            ActionType::EffectStart
-        ];
-    }
     fn as_any(&self) -> &dyn Any { self }
 }
 
@@ -148,12 +152,6 @@ impl Card for SuperNeigh {
         );
     }
 
-    fn action_playable(&self) -> &'static [ActionType] {
-        return &[
-            ActionType::React,
-            ActionType::EffectStart
-        ];
-    }
     fn as_any(&self) -> &dyn Any { self }
 }
 
@@ -178,13 +176,6 @@ impl Card for Neigh {
                 board: latest_board
             }
         );
-    }
-
-    fn action_playable(&self) -> &'static [ActionType] {
-        return &[
-            ActionType::React,
-            ActionType::EffectStart
-        ];
     }
 
     fn as_any(&self) -> &dyn Any { self }

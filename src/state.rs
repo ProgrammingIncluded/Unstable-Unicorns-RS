@@ -41,15 +41,12 @@ pub struct Board {
 
 impl Board {
     pub fn new_base_game(player_count: u8) -> Board {
-        let mut deck: Cards = vec![
-            Box::new(Neigh {}),
-            Box::new(Neigh {}),
-            Box::new(Neigh {}),
-            Box::new(SuperNeigh {})
-        ];
+        let mut deck: Cards = Vec::new();
 
         // Add number of cards
-        add_cards!(deck, BasicUnicorn, 1);
+        add_cards!(deck, BasicUnicorn, 50);
+        add_cards!(deck, Neigh, 3);
+        add_cards!(deck, SuperNeigh, 1);
 
         assert!(player_count >= 2, "Must have atleast two players.");
 
@@ -91,10 +88,11 @@ impl Board {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionType {
     GameStart,
+    TurnStart,
     EffectStart,
+    ReactStart,
     DrawStart,
     PlayStart,
-    React,
     Place,
     Instant,
     Steal,
@@ -104,11 +102,36 @@ pub enum ActionType {
     Draw
 }
 
+impl ActionType {
+    pub fn is_phase(&self) -> bool {
+        match self {
+            ActionType::GameStart => { true },
+            ActionType::EffectStart => { true },
+            ActionType::DrawStart => { true },
+            ActionType::PlayStart => { true },
+            ActionType::ReactStart => { true },
+            ActionType::TurnStart => { true },
+            _ => { false }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Action {
     pub card: Box<dyn Card>,
     pub atype: ActionType,
     pub board: Board
+}
+
+impl Action {
+    pub fn new_start(start: ActionType, board: Board) -> Action {
+        assert!(start.is_phase(), "Created object must be start.");
+        return Action {
+            card: NullCard::new(),
+            atype: start,
+            board: board
+        }
+    }
 }
 
 mod StateTest {
