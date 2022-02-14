@@ -188,8 +188,7 @@ mod CardTest {
 
         // Force a neigh on the neigh
         let forced_neigh = Box::new(Neigh {});
-        let option = forced_neigh.play(0, &vec![Rc::new(neigh_action)]).unwrap();
-
+        let option = forced_neigh.react(0, &vec![Rc::new(neigh_action)]).unwrap();
         assert!(option.card.as_any().is::<Neigh>());
     }
 
@@ -204,7 +203,7 @@ mod CardTest {
 
         // Force a neigh on the neigh
         let forced_neigh = Box::new(Neigh {});
-        let option = forced_neigh.play(0, &vec![Rc::new(neigh_action)]);
+        let option = forced_neigh.react(0, &vec![Rc::new(neigh_action)]);
         assert!(option.is_none(), "Cannot neigh a super neigh.");
     }
 
