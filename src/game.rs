@@ -53,35 +53,55 @@ impl Game {
     }
 
     // Generates and evalulates the game
-    fn get_states(&self, tree: GameTree, player: usize, board: Board) {
-        let ep = self.effect_phase(player, board);
+    fn get_states(&self, history: &History, player: usize) {
+        let ep = self.effect_phase(player, history);
         for e in ep {
             println!("{:?}", e);
         }
     }
     
-    fn effect_phase(&self, player: usize, board: Board) -> Vec<Link<Node>> {
-        // let new_nodes = vec![];
-        let generate_children = |b: &Board| -> Vec<Actions> { 
-            b.players[player]
-              .stable
-              .iter()
-              .filter_map(|x| x.react(player, &vec![]))
-              .collect() 
-        };
+    fn effect_phase(&self, player: usize, history: &History) -> Vec<Link<Node>> {
+        // There must always be atleast one action
+        assert!(history.len() >= 1, "There must always be an action to compute.");
+        // There are really only two possible actions to take
+        let latest_action = &history[history.len() - 1];
+        match latest_action.atype {
+            ActionType::React => {},
+            ActionType::GameStart => {},
+            ActionType::EffectStart => {},
+            _ => {assert!(false, "Must be an available action to trigger effect phase.")}
+        }
 
-        let action_to_node = |a: &Actions| -> Vec<Link<Node>> {
-            a.iter().map(|x| Node::new(vec![], None, x.clone())).collect()
+        // Generate initial children's react
+        let generate_children = |start: &Action, history: &History| -> Vec<Action> { 
+            start.board
+                 .players[player]
+                 .stable
+                 .iter()
+                 .filter_map(|x| x.clone().react(player, history))
+                 .collect() 
         };
 
         // Pair of the node and the path in the tree to node
         // to represent the actions
-        let mut stack: Vec<(Link<Node>, Actions)> = Vec::new();
+        let mut stack: Vec<(Link<Node>, Action, History)> = Vec::new();
         {
-            let start_actions: Vec<Actions> = generate_children(&board);
-            let start_nodes: Vec<Link<Node>> = start_actions.iter().map(|x| Node::new(vec![], None, x[0].clone())).collect();
+            let start_actions: Vec<Action> = generate_children(&latest_action.clone(),&history);
+            let start_nodes: Vec<Link<Node>> = start_actions.iter()
+                                                            .map(|x| Node::new(vec![], None, x.clone()))
+                                                            .collect();
             for i in 0..start_nodes.len() {
-                stack.push((start_nodes[i].clone(), start_actions[i].clone()));
+                stack.push((start_nodes[i].clone(), start_actions[i].clone(), history.clone()));
+            }
+        }
+
+        // Should we try to generate everything?
+        // Yes for now
+        loop {
+            match stack.pop() {
+                Some((node, action, action_history)) => {
+                },
+                None => { break; }
             }
         }
 
@@ -110,8 +130,8 @@ mod GameTest {
             atype: ActionType::GameStart,
             board: Board::new_base_game(2)
         });
-        let board_start = tree.root.borrow().action.board.clone();
-        let result = game.get_states(tree, 0, board_start);
+        let history = vec![Rc::new(tree.root.borrow().action.clone())];
+        let result = game.get_states(&history, 0);
     }
 
     #[test]

@@ -2,12 +2,13 @@
 use std::any::{Any, TypeId};
 use std::fmt;
 use std::fmt::Debug;
+use std::rc::Rc;
 
 // EXT
 use dyn_clone::DynClone;
 
 // UU
-use crate::state::{Actions, Action, ActionType, Board};
+use crate::state::{Actions, Action, ActionType, Board, History};
 
 #[derive(Debug, Clone)]
 enum CardType {
@@ -34,10 +35,12 @@ impl CardType {
 pub trait Card: Debug + DynClone {
     fn ctype(&self) -> CardType;
     fn name(&self) -> &'static str;
-    fn play(self: Box<Self>, player: usize, history: &Actions) -> Option<Actions> { None }
-    fn react(&self, player: usize, history: &Actions) -> Option<Actions> { None }
-    fn destroy(&self, player: usize, history: &Actions) -> Option<Actions> { None }
-    fn steal(&self, player: usize, history: &Actions) -> Option<Actions> { None }
+    fn play(self: Box<Self>, player: usize, history: &History) -> Option<Action> { None }
+    fn react(self: Box<Self>, player: usize, history: &History) -> Option<Action> { None }
+    fn destroy(&self, player: usize, history: &History) -> Option<Action> { None }
+    fn steal(&self, player: usize, history: &History) -> Option<Action> { None }
+
+    fn action_playable(&self) -> &'static [ActionType];
 
     // For dynamic downcast
     fn as_any(&self) -> &dyn Any;
@@ -89,20 +92,30 @@ pub struct SuperNeigh {}
 impl Card for SuperNeigh {
     fn ctype(&self) -> CardType { CardType::Instant }
     fn name(&self) -> &'static str { "SuperNeigh" }
-    fn play(self: Box<Self>, player: usize, history: &Actions) -> Option<Actions> {
-        let latest_action = &history[0];
+    fn react(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
+        if history.len() == 0 {
+            return None;
+        }
+
+        let latest_action = &history[history.len() -1];
         let mut latest_board = latest_action.board.clone();
-        latest_board.players[player].stable.push(self.clone());
-        return Some(vec![
+        latest_board.discard.push(self.clone());
+
+        return Some(
             Action {
                 card: self,
                 atype: ActionType::Instant,
                 board: latest_board,
-            },
-            latest_action.clone()
-        ]);
+            }
+        );
     }
 
+    fn action_playable(&self) -> &'static [ActionType] {
+        return &[
+            ActionType::React,
+            ActionType::EffectStart
+        ];
+    }
     fn as_any(&self) -> &dyn Any { self }
 }
 
@@ -111,23 +124,33 @@ pub struct Neigh {}
 impl Card for Neigh {
     fn ctype(&self) -> CardType { CardType::Instant }
     fn name(&self) -> &'static str { "Neigh" }
-    fn play(self: Box<Self>, player: usize, history: &Actions) -> Option<Actions> {
-        let latest_action = &history[0];
+    fn react(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
+        if history.len() == 0 {
+            return None;
+        }
+
+        let latest_action = &history[history.len() -1];
         if latest_action.card.as_any().is::<SuperNeigh>() {
             return None;
         }
 
         let mut latest_board = latest_action.board.clone();
-        latest_board.players[player].stable.push(self.clone());
+        latest_board.discard.push(self.clone());
 
-        return Some(vec![
+        return Some(
             Action {
                 card: self,
                 atype: ActionType::Instant,
                 board: latest_board
-            },
-            latest_action.clone()
-        ]);
+            }
+        );
+    }
+
+    fn action_playable(&self) -> &'static [ActionType] {
+        return &[
+            ActionType::React,
+            ActionType::EffectStart
+        ];
     }
 
     fn as_any(&self) -> &dyn Any { self }
@@ -165,11 +188,9 @@ mod CardTest {
 
         // Force a neigh on the neigh
         let forced_neigh = Box::new(Neigh {});
-        let option = forced_neigh.play(0, &vec![neigh_action]).unwrap();
+        let option = forced_neigh.play(0, &vec![Rc::new(neigh_action)]).unwrap();
 
-        assert!(option.len() == 2);
-        assert!(option[0].card.as_any().is::<Neigh>());
-        assert!(option[1].card.as_any().is::<Neigh>());
+        assert!(option.card.as_any().is::<Neigh>());
     }
 
     #[test]
@@ -183,7 +204,7 @@ mod CardTest {
 
         // Force a neigh on the neigh
         let forced_neigh = Box::new(Neigh {});
-        let option = forced_neigh.play(0, &vec![neigh_action]);
+        let option = forced_neigh.play(0, &vec![Rc::new(neigh_action)]);
         assert!(option.is_none(), "Cannot neigh a super neigh.");
     }
 

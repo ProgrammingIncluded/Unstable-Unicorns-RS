@@ -1,11 +1,13 @@
 // STD
 use std::any::{Any, TypeId};
 use std::fmt;
+use std::rc::Rc;
 
 // UU
 use crate::cards::*;
 
 pub type Actions = Vec<Action>;
+pub type History = Vec<Rc<Action>>;
 
 #[derive(Debug, Clone)]
 pub struct Player {
@@ -78,6 +80,10 @@ impl Board {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionType {
     GameStart,
+    EffectStart,
+    DrawStart,
+    PlayStart,
+    React,
     Place,
     Instant,
     Steal,
