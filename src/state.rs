@@ -36,6 +36,7 @@ impl Player {
 pub struct Board {
     pub players: Vec<Player>,
     pub deck: Cards,
+    pub nursery: Cards,
     pub discard: Cards
 }
 
@@ -44,7 +45,7 @@ impl Board {
         let mut deck: Cards = Vec::new();
 
         // Add number of cards
-        add_cards!(deck, BasicUnicorn, 50);
+        add_cards!(deck, BasicUnicorn, 22);
         add_cards!(deck, Neigh, 3);
         add_cards!(deck, SuperNeigh, 1);
 
@@ -55,9 +56,12 @@ impl Board {
             players.push(Player::new())
         }
 
+        let mut nursery: Cards = Vec::new();
+        add_cards!(nursery, BabyUnicorn, 13);
         let board = Board {
-            players: players,
-            deck: deck, 
+            players,
+            deck,
+            nursery,
             discard: Vec::new()
         };
 
@@ -71,6 +75,7 @@ impl Board {
             let new_board = Board {
                 players: self.players.clone(),
                 deck: new_deck.clone(),
+                nursery: self.nursery.clone(),
                 discard: self.discard.clone()
             };
 
@@ -87,12 +92,6 @@ impl Board {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionType {
-    GameStart,
-    TurnStart,
-    EffectStart,
-    ReactStart,
-    DrawStart,
-    PlayStart,
     Place,
     Instant,
     Steal,
@@ -102,18 +101,14 @@ pub enum ActionType {
     Draw
 }
 
-impl ActionType {
-    pub fn is_phase(&self) -> bool {
-        match self {
-            ActionType::GameStart => { true },
-            ActionType::EffectStart => { true },
-            ActionType::DrawStart => { true },
-            ActionType::PlayStart => { true },
-            ActionType::ReactStart => { true },
-            ActionType::TurnStart => { true },
-            _ => { false }
-        }
-    }
+#[derive(Debug, Clone, PartialEq)]
+pub enum PhaseType {
+    GameStart,
+    Play,
+    Effect,
+    Turn,
+    React,
+    Draw
 }
 
 #[derive(Debug, Clone)]
@@ -123,23 +118,15 @@ pub struct Action {
     pub board: Board
 }
 
-impl Action {
-    pub fn new_start(start: ActionType, board: Board) -> Action {
-        assert!(start.is_phase(), "Created object must be start.");
-        return Action {
-            card: NullCard::new(),
-            atype: start,
-            board: board
-        }
-    }
-}
-
 mod StateTest {
     use super::*;
 
     #[test]
     fn test_board_draw() {
-        let drawn_card = Board::new_base_game(2).draw_specific_card::<Neigh>().unwrap().card;
+        let drawn_card = Board::new_base_game(2)
+                            .draw_specific_card::<Neigh>()
+                            .unwrap()
+                            .card;
         assert!(drawn_card.name() == "Neigh", "Drawn deck should match.")
     }
 }

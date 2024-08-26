@@ -8,7 +8,7 @@ use std::rc::Rc;
 use dyn_clone::DynClone;
 
 // UU
-use crate::state::{Actions, Action, ActionType, Board, History};
+use crate::state::{Actions, Action, ActionType, Board, History, PhaseType};
 
 #[derive(Debug, Clone)]
 enum CardType {
@@ -36,16 +36,19 @@ impl CardType {
 pub trait Card: Debug + DynClone {
     fn ctype(&self) -> CardType;
     fn name(&self) -> &'static str;
+
+    // Always assumes card has already been taken from the hand.
     fn play(self: Box<Self>, player: usize, history: &History) -> Option<Action> { None }
+
     fn react(self: Box<Self>, player: usize, history: &History) -> Option<Action> { None }
     fn destroy(&self, player: usize, history: &History) -> Option<Action> { None }
     fn steal(&self, player: usize, history: &History) -> Option<Action> { None }
 
     /// Determines if the current card can play in a start phase.
-    fn phase_playable(&self) -> &'static [ActionType] {
+    fn phase_playable(&self) -> &'static [PhaseType] {
         match self.ctype() {
-            CardType::Instant => {return &[ActionType::DrawStart, ActionType::EffectStart, ActionType::ReactStart]}
-            _ => {return &[ActionType::DrawStart, ActionType::EffectStart, ActionType::PlayStart, ActionType::ReactStart]}
+            CardType::Instant => {return &[PhaseType::Draw, PhaseType::Effect, PhaseType::React]}
+            _ => {return &[PhaseType::Draw, PhaseType::Effect, PhaseType::Play, PhaseType::React]}
         }
     }
 
@@ -95,26 +98,9 @@ impl QueryCards for Cards {
 }
 
 #[derive(Debug, Clone)]
-pub struct NullCard {}
-impl NullCard {
-    pub fn new() -> Box<Self> {
-        return Box::new(NullCard {});
-    }
-}
-impl Card for NullCard {
-    fn ctype(&self) -> CardType { CardType::Null }
-    fn name(&self) -> &'static str { "Null Card" }
-    fn play(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
-        assert!(false, "Should never play a null card.");
-        return None;
-    }
-    fn as_any(&self) -> &dyn Any { self }
-}
-
-#[derive(Debug, Clone)]
 pub struct BasicUnicorn {}
 impl Card for BasicUnicorn {
-    fn ctype(&self) -> CardType { CardType::Instant }
+    fn ctype(&self) -> CardType { CardType::BasicUnicorn }
     fn name(&self) -> &'static str { "Basic Unicorn" }
     fn play(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
         let latest_action = &history[history.len() -1];
@@ -132,6 +118,29 @@ impl Card for BasicUnicorn {
 
     fn as_any(&self) -> &dyn Any { self }
 }
+
+#[derive(Debug, Clone)]
+pub struct BabyUnicorn {}
+impl Card for BabyUnicorn {
+    fn ctype(&self) -> CardType { CardType::BabyUnicorn }
+    fn name(&self) -> &'static str { "Baby Unicorn" }
+    fn play(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
+        let latest_action = &history[history.len() -1];
+        let mut latest_board = latest_action.board.clone();
+        latest_board.players[player].stable.push(self.clone());
+
+        return Some(
+            Action {
+                card: self,
+                atype: ActionType::Place,
+                board: latest_board,
+            }
+        );
+    }
+
+    fn as_any(&self) -> &dyn Any { self }
+}
+
 
 #[derive(Debug, Clone)]
 pub struct SuperNeigh {}
