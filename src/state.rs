@@ -90,6 +90,12 @@ impl Board {
 
 }
 
+#[derive(Debug)]
+pub struct GameState {
+    pub board: Board,
+    pub phase: PhaseType
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionType {
     Place,

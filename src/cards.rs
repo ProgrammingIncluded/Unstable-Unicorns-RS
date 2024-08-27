@@ -8,7 +8,7 @@ use std::rc::Rc;
 use dyn_clone::DynClone;
 
 // UU
-use crate::state::{Actions, Action, ActionType, Board, History, PhaseType};
+use crate::state::{Actions, Action, ActionType, Board, GameState, History, PhaseType};
 
 #[derive(Debug, Clone)]
 enum CardType {
@@ -38,11 +38,11 @@ pub trait Card: Debug + DynClone {
     fn name(&self) -> &'static str;
 
     // Always assumes card has already been taken from the hand.
-    fn play(self: Box<Self>, player: usize, history: &History) -> Option<Action> { None }
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> Option<Action> { None }
 
-    fn react(self: Box<Self>, player: usize, history: &History) -> Option<Action> { None }
-    fn destroy(&self, player: usize, history: &History) -> Option<Action> { None }
-    fn steal(&self, player: usize, history: &History) -> Option<Action> { None }
+    fn react(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> Option<Action> { None }
+    fn destroy(&self, player: usize, cur_state: &GameState, history: &History) -> Option<Action> { None }
+    fn steal(&self, player: usize, cur_state: &GameState, history: &History) -> Option<Action> { None }
 
     /// Determines if the current card can play in a start phase.
     fn phase_playable(&self) -> &'static [PhaseType] {
@@ -102,9 +102,8 @@ pub struct BasicUnicorn {}
 impl Card for BasicUnicorn {
     fn ctype(&self) -> CardType { CardType::BasicUnicorn }
     fn name(&self) -> &'static str { "Basic Unicorn" }
-    fn play(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
-        let latest_action = &history[history.len() -1];
-        let mut latest_board = latest_action.board.clone();
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> Option<Action> {
+        let mut latest_board = cur_state.board.clone();
         latest_board.players[player].stable.push(self.clone());
 
         return Some(
@@ -124,9 +123,8 @@ pub struct BabyUnicorn {}
 impl Card for BabyUnicorn {
     fn ctype(&self) -> CardType { CardType::BabyUnicorn }
     fn name(&self) -> &'static str { "Baby Unicorn" }
-    fn play(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
-        let latest_action = &history[history.len() -1];
-        let mut latest_board = latest_action.board.clone();
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> Option<Action> {
+        let mut latest_board = cur_state.board.clone();
         latest_board.players[player].stable.push(self.clone());
 
         return Some(
@@ -147,9 +145,8 @@ pub struct SuperNeigh {}
 impl Card for SuperNeigh {
     fn ctype(&self) -> CardType { CardType::Instant }
     fn name(&self) -> &'static str { "Super Neigh" }
-    fn react(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
-        let latest_action = &history[history.len() -1];
-        let mut latest_board = latest_action.board.clone();
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> Option<Action> {
+        let mut latest_board = cur_state.board.clone();
         latest_board.discard.push(self.clone());
 
         return Some(
@@ -169,7 +166,12 @@ pub struct Neigh {}
 impl Card for Neigh {
     fn ctype(&self) -> CardType { CardType::Instant }
     fn name(&self) -> &'static str { "Neigh" }
-    fn react(self: Box<Self>, player: usize, history: &History) -> Option<Action> {
+    fn react(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> Option<Action> {
+        if history.len() <= 1 {
+            // Cannot play instant without a reaction.
+            return None;
+        }
+
         let latest_action = &history[history.len() -1];
         if latest_action.card.as_any().is::<SuperNeigh>() {
             return None;
@@ -220,9 +222,16 @@ mod CardTest {
             board: board.clone()
         };
 
+        let game_state = GameState {
+            board,
+            phase: PhaseType::Play
+        };
+
         // Force a neigh on the neigh
         let forced_neigh = Box::new(Neigh {});
-        let option = forced_neigh.react(0, &vec![Rc::new(neigh_action)]).unwrap();
+        let option = forced_neigh.react(0,
+                                        &game_state,
+                                        &vec![Rc::new(neigh_action)]).unwrap();
         assert!(option.card.as_any().is::<Neigh>());
         assert!(option.board.discard.len() == 1);
         assert!(option.board.discard.has_card::<Neigh>());
@@ -237,9 +246,14 @@ mod CardTest {
             board: board.clone()
         };
 
+        let game_state = GameState {
+            board,
+            phase: PhaseType::Play
+        };
+
         // Force a neigh on the neigh
         let forced_neigh = Box::new(Neigh {});
-        let option = forced_neigh.react(0, &vec![Rc::new(neigh_action)]);
+        let option = forced_neigh.react(0, &game_state, &vec![Rc::new(neigh_action)]);
         assert!(option.is_none(), "Cannot neigh a super neigh.");
     }
 
