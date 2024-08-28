@@ -8,7 +8,7 @@ use std::rc::Rc;
 use dyn_clone::DynClone;
 
 // UU
-use crate::state::{Actions, Action, ActionType, Board, GameState, History, PhaseType};
+use crate::state::{Action, ActionType, Board, GameState, History, PhaseType, LogicResult, ReactResult};
 
 #[derive(Debug, Clone)]
 enum CardType {
@@ -38,11 +38,12 @@ pub trait Card: Debug + DynClone {
     fn name(&self) -> &'static str;
 
     // Always assumes card has already been taken from the hand.
-    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> Option<Action> { None }
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> LogicResult { Ok(None) }
+    fn react(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> LogicResult { Ok(None) }
 
-    fn react(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> Option<Action> { None }
-    fn destroy(&self, player: usize, cur_state: &GameState, history: &History) -> Option<Action> { None }
-    fn steal(&self, player: usize, cur_state: &GameState, history: &History) -> Option<Action> { None }
+    fn effect(&self, player: usize, cur_state: &GameState, history: &History) -> ReactResult { Ok(None) }
+    fn destroy(&self, player: usize, cur_state: &GameState, history: &History) -> LogicResult { Ok(None) }
+    fn steal(&self, player: usize, cur_state: &GameState, history: &History) -> LogicResult { Ok(None) }
 
     /// Determines if the current card can play in a start phase.
     fn phase_playable(&self) -> &'static [PhaseType] {
@@ -102,17 +103,17 @@ pub struct BasicUnicorn {}
 impl Card for BasicUnicorn {
     fn ctype(&self) -> CardType { CardType::BasicUnicorn }
     fn name(&self) -> &'static str { "Basic Unicorn" }
-    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> Option<Action> {
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> LogicResult {
         let mut latest_board = cur_state.board.clone();
         latest_board.players[player].stable.push(self.clone());
 
-        return Some(
+        return Ok(Some(
             Action {
                 card: self,
                 atype: ActionType::Place,
                 board: latest_board,
             }
-        );
+        ));
     }
 
     fn as_any(&self) -> &dyn Any { self }
@@ -123,17 +124,17 @@ pub struct BabyUnicorn {}
 impl Card for BabyUnicorn {
     fn ctype(&self) -> CardType { CardType::BabyUnicorn }
     fn name(&self) -> &'static str { "Baby Unicorn" }
-    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> Option<Action> {
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> LogicResult {
         let mut latest_board = cur_state.board.clone();
         latest_board.players[player].stable.push(self.clone());
 
-        return Some(
+        return Ok(Some(
             Action {
                 card: self,
                 atype: ActionType::Place,
                 board: latest_board,
             }
-        );
+        ));
     }
 
     fn as_any(&self) -> &dyn Any { self }
@@ -145,17 +146,17 @@ pub struct SuperNeigh {}
 impl Card for SuperNeigh {
     fn ctype(&self) -> CardType { CardType::Instant }
     fn name(&self) -> &'static str { "Super Neigh" }
-    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> Option<Action> {
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> LogicResult {
         let mut latest_board = cur_state.board.clone();
         latest_board.discard.push(self.clone());
 
-        return Some(
+        return Ok(Some(
             Action {
                 card: self,
                 atype: ActionType::Instant,
                 board: latest_board,
             }
-        );
+        ));
     }
 
     fn as_any(&self) -> &dyn Any { self }
@@ -166,27 +167,27 @@ pub struct Neigh {}
 impl Card for Neigh {
     fn ctype(&self) -> CardType { CardType::Instant }
     fn name(&self) -> &'static str { "Neigh" }
-    fn react(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> Option<Action> {
+    fn react(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> LogicResult {
         if history.len() <= 1 {
             // Cannot play instant without a reaction.
-            return None;
+            return Ok(None);
         }
 
         let latest_action = &history[history.len() -1];
         if latest_action.card.as_any().is::<SuperNeigh>() {
-            return None;
+            return Ok(None);
         }
 
         let mut latest_board = latest_action.board.clone();
         latest_board.discard.push(self.clone());
 
-        return Some(
+        return Ok(Some(
             Action {
                 card: self,
                 atype: ActionType::Instant,
                 board: latest_board
             }
-        );
+        ));
     }
 
     fn as_any(&self) -> &dyn Any { self }
@@ -217,7 +218,7 @@ mod CardTest {
     fn test_neigh_neigh() {
         let board = default_board();
         let neigh_action = Action {
-            card: board.draw_specific_card::<Neigh>().unwrap().card,
+            card: board.draw_specific_card::<Neigh>().unwrap().unwrap().card,
             atype: ActionType::Instant,
             board: board.clone()
         };
@@ -241,7 +242,7 @@ mod CardTest {
     fn test_neigh_super_neigh() {
         let board = default_board();
         let neigh_action = Action {
-            card: board.draw_specific_card::<SuperNeigh>().unwrap().card,
+            card: board.draw_specific_card::<SuperNeigh>().unwrap().unwrap().card,
             atype: ActionType::Instant,
             board: board.clone()
         };

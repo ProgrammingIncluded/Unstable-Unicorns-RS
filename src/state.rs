@@ -6,8 +6,7 @@ use std::rc::Rc;
 // UU
 use crate::cards::*;
 
-pub type Actions = Vec<Action>;
-pub type History = Vec<Rc<Action>>;
+pub type History = Vec<Action>;
 
 macro_rules! add_cards {
     ($deck:expr, $cls:ident, $num:expr ) => {
@@ -16,6 +15,13 @@ macro_rules! add_cards {
         }
     };
 }
+
+pub enum LogicError {
+    DeckEmpty,
+    Unknown
+}
+
+pub type LogicResult = Result<Option<Action>, LogicError>;
 
 #[derive(Debug, Clone)]
 pub struct Player {
@@ -68,9 +74,34 @@ impl Board {
         return  board;
     }
 
+    pub fn draw(&self) -> LogicResult {
+        if self.deck.len() <= 0 {
+            return Err(LogicError::DeckEmpty);
+        }
+
+        let mut new_deck = self.deck.clone();
+        let card = new_deck.pop().unwrap();
+        let new_board = Board {
+            players: self.players.clone(),
+            deck: new_deck,
+            nursery: self.nursery.clone(),
+            discard: self.discard.clone()
+        };
+
+        return Ok(Some(Action {
+            card,
+            atype: ActionType::Draw,
+            board: new_board
+        }));
+    }
+
     /// Draws a specified card if applicable.
-    pub fn draw_specific_card<T: 'static + Card>(&self) -> Option<Action> {
-        let (c, new_deck) = self.deck.remove_one_card_with_type::<T>()?;
+    pub fn draw_specific_card<T: 'static + Card>(&self) -> LogicResult {
+        if self.deck.len() <= 0 {
+            return Err(LogicError::DeckEmpty);
+        }
+
+        let (c, new_deck) = self.deck.remove_one_card_with_type::<T>().unwrap();
         if new_deck.len() != self.deck.len() {
             let new_board = Board {
                 players: self.players.clone(),
@@ -79,18 +110,18 @@ impl Board {
                 discard: self.discard.clone()
             };
 
-            return Some(Action {
+            return Ok(Some(Action {
                 card: c.clone(),
                 atype: ActionType::Draw,
                 board: new_board
-            });
+            }));
         }
-        return None;
+        return Ok(None);
     }
 
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct GameState {
     pub board: Board,
     pub phase: PhaseType
@@ -124,6 +155,17 @@ pub struct Action {
     pub board: Board
 }
 
+// A ReactAction is a special kind of action
+// which requires a response from other players.
+// If
+pub struct ReactAction {
+    pub effect_action: Action,
+    pub follow_up_action: Action,
+    pub response: Vec<usize>
+}
+
+pub type ReactResult = Result<Option<ReactAction>, LogicError>;
+
 mod StateTest {
     use super::*;
 
@@ -131,6 +173,7 @@ mod StateTest {
     fn test_board_draw() {
         let drawn_card = Board::new_base_game(2)
                             .draw_specific_card::<Neigh>()
+                            .unwrap()
                             .unwrap()
                             .card;
         assert!(drawn_card.name() == "Neigh", "Drawn deck should match.")
