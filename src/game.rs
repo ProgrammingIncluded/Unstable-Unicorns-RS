@@ -8,7 +8,8 @@ use rand::{seq::SliceRandom, SeedableRng};
 use rand_chacha::ChaChaRng;
 
 use petgraph::graph::{EdgeIndex, NodeIndex};
-use petgraph::Graph;
+use petgraph::visit::{EdgeRef, Bfs};
+use petgraph::{Graph, Incoming};
 
 #[derive(Clone, Debug)]
 pub struct ActionEdge {
@@ -25,28 +26,7 @@ impl From<&Action> for ActionEdge {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct ReactEdge {
-    pub follow_up_action: Action,
-    pub response: Vec<usize>
-}
-
-impl From<&ReactAction> for ReactEdge {
-    fn from(value: &ReactAction) -> Self {
-        return ReactEdge {
-            follow_up_action: value.follow_up_action.clone(),
-            response: value.response.clone()
-        }
-    }
-}
-
 type GameGraph = Graph::<GameState, ActionEdge>;
-
-impl GameState {
-    fn new(board: &Board, phase: &PhaseType) -> Self {
-        return GameState { board: board.clone(), phase: phase.clone() };
-    }
-}
 
 struct Game { graph: GameGraph }
 impl Game {
@@ -100,69 +80,77 @@ impl Game {
         return Ok(());
     }
 
-    fn effect_phase(&mut self, player: usize, a_idx: &EdgeIndex) -> Result<HashMap<NodeIndex, ReactEdge>, LogicError> {
+    fn effect_phase(&mut self, player: usize, a_idx: &EdgeIndex) -> Result<(), LogicError> {
         let node_idx = self.graph.edge_endpoints(*a_idx).unwrap().1;
         let edge_action = self.graph.edge_weight_mut(*a_idx).unwrap().clone();
         let game_state = self.graph.node_weight(node_idx).unwrap().clone();
 
-        let mut _generate_actions = |container: &Cards| -> Result<HashMap<NodeIndex, ReactEdge>, LogicError> {
-                let mut follow_up: HashMap<NodeIndex, ReactEdge> = HashMap::new();
-
+        let mut _generate_actions = |container: &Cards| -> Result<(), LogicError> {
                 for card in container {
                     let action = Action {
                         atype: edge_action.atype.clone(),
                         card: edge_action.card.clone(),
                         board: game_state.board.clone()
                     };
-                    let reaction = card.effect(player, &game_state, &vec![action])?;
-                    if let None = reaction {
+                    let reactions = card.effect(player, &game_state, &vec![action])?;
+
+                    if reactions.len() <= 0 {
                         continue;
                     }
-                    let reaction = reaction.unwrap();
 
-                    let action = &reaction.effect_action;
-                    let phase_node = GameState::new(&action.board, &PhaseType::Effect);
-                    let b_idx = self.graph.add_node(phase_node);
-                    self.graph.add_edge(node_idx, b_idx, ActionEdge::from(action));
-
-                    follow_up.insert(b_idx, ReactEdge::from(&reaction));
+                    for reaction in reactions {
+                        let action = &reaction.effect_action;
+                        let mut phase_node = GameState::new(&action.board, &PhaseType::Effect);
+                        phase_node.react_metadata = Option::<ReactMetadata>::from(&reaction);
+                        let b_idx = self.graph.add_node(phase_node);
+                        self.graph.add_edge(node_idx, b_idx, ActionEdge::from(action));
+                    }
                 }
 
-                return Ok(follow_up);
+                return Ok(());
             };
 
         // Any card can have an effect, so it is important that we keep track of the previous Node's phase
         // and use that as history.
-        let mut result: HashMap<NodeIndex, ReactEdge> = HashMap::new();
         for hand_idx in 0..game_state.board.players.len() {
-            result.extend(_generate_actions(&game_state.board.players[hand_idx].hand)?);
-            result.extend(_generate_actions(&game_state.board.players[hand_idx].stable)?);
+            _generate_actions(&game_state.board.players[hand_idx].hand)?;
+            _generate_actions(&game_state.board.players[hand_idx].stable)?;
         }
 
-        return Ok(result);
+        // We also need to add an no-op option.
+        let mut phase_node = GameState::new(&game_state.board, &PhaseType::Effect);
+        let no_idx = self.graph.add_node(phase_node);
+        self.graph.add_edge(node_idx, no_idx, ActionEdge { card: edge_action.card.clone(), atype: ActionType::NoOp });
+
+        return Ok(());
     }
 
     fn play_phase(&mut self, player: usize, idx: &NodeIndex) -> Result<(), LogicError> {
-        let mut board_copy = self.graph.node_weight(*idx).unwrap().board.clone();
-        for (h_idx, card) in board_copy.players[player].hand.iter().enumerate() {
+        let board = self.graph.node_weight(*idx).unwrap().board.clone();
+        for (h_idx, card) in board.players[player].hand.iter().cloned().enumerate() {
             if !card.phase_playable().contains(&PhaseType::Play) {
                 continue
             }
 
             // Check if its possible to play said card.
             // For this case, we don't care about history because its the first play of the stack.
-            let mut board_copy = board_copy.clone();
-            let card = board_copy.players[player].hand.remove(h_idx);
+            let mut board_copy = board.clone();
+            board_copy.players[player].hand.remove(h_idx);
 
             // Location can change, so we play the card to resolve the action.
-            let action = card.play(player, &self.graph.node_weight(*idx).unwrap(),&vec![])?;
-            if let None = action {
+            let actions = card.play(player, &self.graph.node_weight(*idx).unwrap(), &vec![])?;
+            if actions.len() <= 0 {
                 continue;
             }
-            let action = action.unwrap();
-            let phase_node = GameState::new(&action.board, &PhaseType::Play);
-            let b_idx = self.graph.add_node(phase_node);
-            self.graph.add_edge(*idx, b_idx, ActionEdge::from(&action));
+
+            for action in actions {
+                let mut phase_node = GameState::new(&action.effect_action.board, &PhaseType::Play);
+                if let Some(_) =  action.follow_up {
+                    phase_node.react_metadata = Option::<ReactMetadata>::from(&action);
+                }
+                let b_idx = self.graph.add_node(phase_node);
+                self.graph.add_edge(*idx, b_idx, ActionEdge::from(&action.effect_action));
+            }
         }
 
         return Ok(());
@@ -175,11 +163,69 @@ mod GameTest {
     use crate::cards::*;
 
     #[test]
+    fn test_effect_phase() {
+        let mut board = Board::new_base_game(2);
+
+        // We grab a unicorn phoenix and put it into the stable first.
+        let (phoenix_card, new_deck) = board.deck.remove_one_card_with_type::<UnicornPhoenix>().unwrap();
+        let (unicorn_poison, new_deck) = new_deck.remove_one_card_with_type::<UnicornPoison>().unwrap();
+        let (neigh, new_deck) = new_deck.remove_one_card_with_type::<Neigh>().unwrap();
+
+        board.deck = new_deck;
+        board.players[0].stable.push(phoenix_card);
+        board.players[0].hand.push(neigh);
+        board.players[1].hand.push(unicorn_poison);
+
+        // first we play the phoenix card
+        let mut game = Game::new(&board, true, None);
+
+        // Start with playing poison.
+        game.play_phase(1, &NodeIndex::new(0)).unwrap();
+        assert!(game.graph.node_count() == 4);
+
+        let mut save_edge = None;
+        let mut save_node = None;
+        let mut bfs = Bfs::new(&game.graph, NodeIndex::new(0));
+        let mut skip_first = true;
+        while let Some(nx) = bfs.next(&game.graph) {
+            if skip_first {
+                skip_first = false;
+                continue;
+            }
+
+            let weight = game.graph.node_weight(nx).unwrap();
+            assert!(weight.phase == PhaseType::Play);
+            let follow_up = &weight.react_metadata.as_ref().unwrap().follow_up;
+            assert!(follow_up.atype == ActionType::Destroy);
+
+            // Find the card that we care about.
+            if follow_up.card.as_any().is::<UnicornPhoenix>() {
+                let mut edges = game.graph.neighbors_directed(nx, Incoming).detach();
+                while let Some(edge) = edges.next_edge(&game.graph) {
+                    save_node = Some(nx);
+                    save_edge = Some(edge);
+                }
+            }
+        }
+
+        assert!(save_edge.is_some());
+        let save_edge = save_edge.unwrap();
+        let save_node = save_node.unwrap();
+
+        // Try to destroy our unicorn card.
+        game.effect_phase(0, &save_edge).unwrap();
+
+        // Verify the generated payload.
+        let edge_count: Vec<_> = game.graph.edges(save_node).collect();
+        assert!(edge_count.len() == 1);
+    }
+
+    #[test]
     fn test_play_phase() {
         // We only test the code in the phase and not per-card logic.
         let mut board = Board::new_base_game(2);
 
-        // Put a neigh in hand to allow for playing in calculation.
+        // Put a basic unicorn in hand to allow for playing in calculation.
         let (card, new_deck) = board.deck.remove_one_card_with_type::<BasicUnicorn>().unwrap();
         board.deck = new_deck;
         board.players[0].hand.push(card);

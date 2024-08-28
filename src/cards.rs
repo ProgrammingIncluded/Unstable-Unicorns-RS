@@ -8,7 +8,7 @@ use std::rc::Rc;
 use dyn_clone::DynClone;
 
 // UU
-use crate::state::{Action, ActionType, Board, GameState, History, PhaseType, LogicResult, ReactResult};
+use crate::state::{Action, ActionType, Board, GameState, History, PhaseType, ReactResult, ReactAction};
 
 #[derive(Debug, Clone)]
 enum CardType {
@@ -38,12 +38,12 @@ pub trait Card: Debug + DynClone {
     fn name(&self) -> &'static str;
 
     // Always assumes card has already been taken from the hand.
-    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> LogicResult { Ok(None) }
-    fn react(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> LogicResult { Ok(None) }
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> ReactResult { Ok(vec![]) }
+    fn react(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> ReactResult { Ok(vec![]) }
 
-    fn effect(&self, player: usize, cur_state: &GameState, history: &History) -> ReactResult { Ok(None) }
-    fn destroy(&self, player: usize, cur_state: &GameState, history: &History) -> LogicResult { Ok(None) }
-    fn steal(&self, player: usize, cur_state: &GameState, history: &History) -> LogicResult { Ok(None) }
+    fn effect(&self, player: usize, cur_state: &GameState, history: &History) -> ReactResult { Ok(vec![]) }
+    fn destroy(&self, player: usize, cur_state: &GameState, history: &History) -> ReactResult { Ok(vec![]) }
+    fn steal(&self, player: usize, cur_state: &GameState, history: &History) -> ReactResult { Ok(vec![]) }
 
     /// Determines if the current card can play in a start phase.
     fn phase_playable(&self) -> &'static [PhaseType] {
@@ -103,17 +103,85 @@ pub struct BasicUnicorn {}
 impl Card for BasicUnicorn {
     fn ctype(&self) -> CardType { CardType::BasicUnicorn }
     fn name(&self) -> &'static str { "Basic Unicorn" }
-    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> LogicResult {
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> ReactResult {
         let mut latest_board = cur_state.board.clone();
         latest_board.players[player].stable.push(self.clone());
 
-        return Ok(Some(
-            Action {
-                card: self,
-                atype: ActionType::Place,
-                board: latest_board,
-            }
-        ));
+        return Ok(vec![
+            ReactAction::from(
+                &Action {
+                    card: self,
+                    atype: ActionType::Place,
+                    board: latest_board,
+                }
+            )
+        ]);
+    }
+
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+#[derive(Debug, Clone)]
+pub struct UnicornPhoenix {}
+impl Card for UnicornPhoenix {
+    fn ctype(&self) -> CardType { CardType::MagicUnicorn }
+    fn name(&self) -> &'static str { "Unicorn Phoenix" }
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> ReactResult {
+        let mut latest_board = cur_state.board.clone();
+        latest_board.players[player].stable.push(self.clone());
+
+        return Ok(vec![
+            ReactAction::from(
+                &Action {
+                    card: self,
+                    atype: ActionType::Place,
+                    board: latest_board,
+                }
+            )
+        ]);
+    }
+
+    fn effect(&self, player: usize, cur_state: &GameState, history: &History) -> ReactResult {
+        let last_action = history.last().unwrap();
+        if !last_action.card.as_any().is::<Self>() {
+            return Ok(vec![]);
+        }
+        // Check the type of effect.
+        let mut final_result = vec![];
+
+        let mut new_board = cur_state.board.clone();
+        let own_card = new_board.discard.pop().unwrap();
+        assert!(own_card.as_any().is::<Self>(), "Invalid discard stack detected.");
+        new_board.players[player].stable.push(own_card);
+        let effect_action = Action {
+            card: last_action.card.clone(),
+            atype: ActionType::Revive,
+            board: new_board
+        };
+
+        if last_action.atype == ActionType::Destroy || last_action.atype == ActionType::Sacrifice {
+            let hand = &cur_state.board.players[player].hand;
+            hand.iter().enumerate().map(|(idx, h)| {
+                let mut new_board = cur_state.board.clone();
+                new_board.players[player].hand.remove(idx);
+                new_board.discard.push(h.clone());
+
+
+                let follow_up = Action {
+                    card: h.clone(),
+                    atype: ActionType::Discard,
+                    board: new_board
+                };
+
+                final_result.push(ReactAction {
+                    effect_action: effect_action.clone(),
+                    follow_up: Some(follow_up),
+                    response: vec![]
+                });
+            }).count();
+        }
+
+        return Ok(final_result);
     }
 
     fn as_any(&self) -> &dyn Any { self }
@@ -124,17 +192,19 @@ pub struct BabyUnicorn {}
 impl Card for BabyUnicorn {
     fn ctype(&self) -> CardType { CardType::BabyUnicorn }
     fn name(&self) -> &'static str { "Baby Unicorn" }
-    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> LogicResult {
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> ReactResult {
         let mut latest_board = cur_state.board.clone();
         latest_board.players[player].stable.push(self.clone());
 
-        return Ok(Some(
-            Action {
-                card: self,
-                atype: ActionType::Place,
-                board: latest_board,
-            }
-        ));
+        return Ok(vec![
+            ReactAction::from(
+                &Action {
+                    card: self,
+                    atype: ActionType::Place,
+                    board: latest_board,
+                }
+            )
+        ]);
     }
 
     fn as_any(&self) -> &dyn Any { self }
@@ -146,17 +216,19 @@ pub struct SuperNeigh {}
 impl Card for SuperNeigh {
     fn ctype(&self) -> CardType { CardType::Instant }
     fn name(&self) -> &'static str { "Super Neigh" }
-    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> LogicResult {
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> ReactResult {
         let mut latest_board = cur_state.board.clone();
         latest_board.discard.push(self.clone());
 
-        return Ok(Some(
-            Action {
-                card: self,
-                atype: ActionType::Instant,
-                board: latest_board,
-            }
-        ));
+        return Ok(vec![
+            ReactAction::from(
+                &Action {
+                    card: self,
+                    atype: ActionType::Instant,
+                    board: latest_board
+                }
+            )
+        ]);
     }
 
     fn as_any(&self) -> &dyn Any { self }
@@ -167,29 +239,76 @@ pub struct Neigh {}
 impl Card for Neigh {
     fn ctype(&self) -> CardType { CardType::Instant }
     fn name(&self) -> &'static str { "Neigh" }
-    fn react(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> LogicResult {
-        if history.len() <= 1 {
+    fn react(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> ReactResult {
+        if history.len() < 1 {
             // Cannot play instant without a reaction.
-            return Ok(None);
+            return Ok(vec![]);
         }
 
-        let latest_action = &history[history.len() -1];
+        let latest_action = &history.last().unwrap();
         if latest_action.card.as_any().is::<SuperNeigh>() {
-            return Ok(None);
+            return Ok(vec![]);
         }
 
         let mut latest_board = latest_action.board.clone();
         latest_board.discard.push(self.clone());
 
-        return Ok(Some(
-            Action {
-                card: self,
-                atype: ActionType::Instant,
-                board: latest_board
-            }
-        ));
+        return Ok(vec![
+            ReactAction::from(
+                &Action {
+                    card: self,
+                    atype: ActionType::Instant,
+                    board: latest_board
+                }
+            )
+        ]);
     }
 
+    fn as_any(&self) -> &dyn Any { self }
+}
+
+#[derive(Debug, Clone)]
+pub struct UnicornPoison {}
+impl Card for UnicornPoison {
+    fn ctype(&self) -> CardType { CardType::Magic }
+    fn name(&self) -> &'static str { "Unicorn Poison" }
+    fn play(self: Box<Self>, player: usize, cur_state: &GameState, history: &History) -> ReactResult {
+        let mut latest_board = cur_state.board.clone();
+        latest_board.discard.push(self.clone());
+
+        let mut result = vec![];
+
+        let effect_action = Action {
+            card: self,
+            atype: ActionType::Discard,
+            board: latest_board.clone(),
+        };
+
+        for (p_idx, p) in latest_board.players.iter().enumerate() {
+            for (idx, k) in p.stable.iter().enumerate() {
+                if !k.ctype().is_unicorn() {
+                    continue
+                }
+
+                let mut follow_board = latest_board.clone();
+                follow_board.players[p_idx].stable.remove(idx);
+                follow_board.discard.push(k.clone());
+                let follow_up = Action {
+                    card: k.clone(),
+                    atype: ActionType::Destroy,
+                    board: follow_board
+                };
+
+                result.push(ReactAction {
+                    follow_up: Some(follow_up),
+                    effect_action: effect_action.clone(),
+                    response: vec![]
+                })
+            }
+        }
+
+        return Ok(result);
+    }
     fn as_any(&self) -> &dyn Any { self }
 }
 
@@ -225,17 +344,21 @@ mod CardTest {
 
         let game_state = GameState {
             board,
-            phase: PhaseType::Play
+            phase: PhaseType::Play,
+            react_metadata: None
         };
 
         // Force a neigh on the neigh
         let forced_neigh = Box::new(Neigh {});
         let option = forced_neigh.react(0,
                                         &game_state,
-                                        &vec![Rc::new(neigh_action)]).unwrap();
-        assert!(option.card.as_any().is::<Neigh>());
-        assert!(option.board.discard.len() == 1);
-        assert!(option.board.discard.has_card::<Neigh>());
+                                        &vec![neigh_action]).unwrap();
+        assert!(option.len() == 1);
+        let option = &option[0];
+
+        assert!(option.effect_action.card.as_any().is::<Neigh>());
+        assert!(option.effect_action.board.discard.len() == 1);
+        assert!(option.effect_action.board.discard.has_card::<Neigh>());
     }
 
     #[test]
@@ -249,13 +372,14 @@ mod CardTest {
 
         let game_state = GameState {
             board,
-            phase: PhaseType::Play
+            phase: PhaseType::Play,
+            react_metadata: None
         };
 
         // Force a neigh on the neigh
         let forced_neigh = Box::new(Neigh {});
-        let option = forced_neigh.react(0, &game_state, &vec![Rc::new(neigh_action)]);
-        assert!(option.is_none(), "Cannot neigh a super neigh.");
+        let option = forced_neigh.react(0, &game_state, &vec![neigh_action]);
+        assert!(option.unwrap().len() == 0, "Cannot neigh a super neigh.");
     }
 
     #[test]

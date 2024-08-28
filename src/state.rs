@@ -16,12 +16,11 @@ macro_rules! add_cards {
     };
 }
 
+#[derive(Debug, Clone)]
 pub enum LogicError {
     DeckEmpty,
     Unknown
 }
-
-pub type LogicResult = Result<Option<Action>, LogicError>;
 
 #[derive(Debug, Clone)]
 pub struct Player {
@@ -51,9 +50,11 @@ impl Board {
         let mut deck: Cards = Vec::new();
 
         // Add number of cards
-        add_cards!(deck, BasicUnicorn, 22);
+        add_cards!(deck, BasicUnicorn, 2);
         add_cards!(deck, Neigh, 3);
         add_cards!(deck, SuperNeigh, 1);
+        add_cards!(deck, UnicornPhoenix, 1);
+        add_cards!(deck, UnicornPoison, 3);
 
         assert!(player_count >= 2, "Must have atleast two players.");
 
@@ -63,7 +64,7 @@ impl Board {
         }
 
         let mut nursery: Cards = Vec::new();
-        add_cards!(nursery, BabyUnicorn, 13);
+        add_cards!(nursery, BabyUnicorn, 3);
         let board = Board {
             players,
             deck,
@@ -121,11 +122,7 @@ impl Board {
 
 }
 
-#[derive(Clone, Debug)]
-pub struct GameState {
-    pub board: Board,
-    pub phase: PhaseType
-}
+
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ActionType {
@@ -135,7 +132,10 @@ pub enum ActionType {
     Destroy,
     Stolen,
     Discard,
-    Draw
+    Sacrifice,
+    Revive,
+    Draw,
+    NoOp,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -157,14 +157,57 @@ pub struct Action {
 
 // A ReactAction is a special kind of action
 // which requires a response from other players.
-// If
+#[derive(Debug, Clone)]
 pub struct ReactAction {
     pub effect_action: Action,
-    pub follow_up_action: Action,
+    pub follow_up: Option<Action>,
     pub response: Vec<usize>
 }
 
-pub type ReactResult = Result<Option<ReactAction>, LogicError>;
+impl From<&Action> for ReactAction {
+    fn from(value: &Action) -> Self {
+        return ReactAction {
+            effect_action: value.clone(),
+            follow_up: None,
+            response: vec![]
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct ReactMetadata {
+    pub follow_up: Action,
+    pub response: Vec<usize>
+}
+
+impl From<&ReactAction> for Option<ReactMetadata> {
+    fn from(value: &ReactAction) -> Self {
+        if value.follow_up.is_none() {
+            return None;
+        }
+
+        return Some(ReactMetadata {
+            follow_up: value.follow_up.clone().unwrap(),
+            response: value.response.clone()
+        });
+    }
+}
+
+pub type ReactResult = Result<Vec<ReactAction>, LogicError>;
+pub type LogicResult = Result<Option<Action>, LogicError>;
+
+#[derive(Clone, Debug)]
+pub struct GameState {
+    pub board: Board,
+    pub phase: PhaseType,
+    pub react_metadata: Option<ReactMetadata>,
+}
+
+impl GameState {
+    pub fn new(board: &Board, phase: &PhaseType) -> Self {
+        return GameState { board: board.clone(), phase: phase.clone(), react_metadata: None };
+    }
+}
 
 mod StateTest {
     use super::*;
