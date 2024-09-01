@@ -148,6 +148,12 @@ pub enum PhaseType {
     Draw
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ResponseOp {
+    Discard,
+    Destroy
+}
+
 #[derive(Debug, Clone)]
 pub struct Action {
     pub card: Box<dyn Card>,
@@ -160,24 +166,24 @@ pub struct Action {
 #[derive(Debug, Clone)]
 pub struct ReactAction {
     pub effect_action: Action,
-    pub follow_up: Option<Action>,
-    pub response: Vec<usize>
+    pub follow_up: Option<ResponseOp>,
+    pub response_user: Vec<usize>
 }
 
 impl From<&Action> for ReactAction {
     fn from(value: &Action) -> Self {
         return ReactAction {
             effect_action: value.clone(),
+            response_user: vec![],
             follow_up: None,
-            response: vec![]
         }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct ReactMetadata {
-    pub follow_up: Action,
-    pub response: Vec<usize>
+    pub follow_up: ResponseOp,
+    pub response_user: Vec<usize>
 }
 
 impl From<&ReactAction> for Option<ReactMetadata> {
@@ -188,7 +194,7 @@ impl From<&ReactAction> for Option<ReactMetadata> {
 
         return Some(ReactMetadata {
             follow_up: value.follow_up.clone().unwrap(),
-            response: value.response.clone()
+            response_user: value.response_user.clone()
         });
     }
 }

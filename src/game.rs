@@ -100,7 +100,7 @@ impl Game {
 
                     for reaction in reactions {
                         let action = &reaction.effect_action;
-                        let mut phase_node = GameState::new(&action.board, &PhaseType::Effect);
+                        let mut phase_node = GameState::new(&action.board, &PhaseType::React);
                         phase_node.react_metadata = Option::<ReactMetadata>::from(&reaction);
                         let b_idx = self.graph.add_node(phase_node);
                         self.graph.add_edge(node_idx, b_idx, ActionEdge::from(action));
@@ -118,7 +118,7 @@ impl Game {
         }
 
         // We also need to add an no-op option.
-        let mut phase_node = GameState::new(&game_state.board, &PhaseType::Effect);
+        let mut phase_node = GameState::new(&game_state.board, &PhaseType::React);
         let no_idx = self.graph.add_node(phase_node);
         self.graph.add_edge(node_idx, no_idx, ActionEdge { card: edge_action.card.clone(), atype: ActionType::NoOp });
 
@@ -144,7 +144,7 @@ impl Game {
             }
 
             for action in actions {
-                let mut phase_node = GameState::new(&action.effect_action.board, &PhaseType::Play);
+                let mut phase_node = GameState::new(&action.effect_action.board, &PhaseType::React);
                 if let Some(_) =  action.follow_up {
                     phase_node.react_metadata = Option::<ReactMetadata>::from(&action);
                 }
@@ -194,12 +194,10 @@ mod GameTest {
             }
 
             let weight = game.graph.node_weight(nx).unwrap();
-            assert!(weight.phase == PhaseType::Play);
+            assert!(weight.phase == PhaseType::React);
             let follow_up = &weight.react_metadata.as_ref().unwrap().follow_up;
-            assert!(follow_up.atype == ActionType::Destroy);
-
             // Find the card that we care about.
-            if follow_up.card.as_any().is::<UnicornPhoenix>() {
+            if follow_up == &ResponseOp::Destroy {
                 let mut edges = game.graph.neighbors_directed(nx, Incoming).detach();
                 while let Some(edge) = edges.next_edge(&game.graph) {
                     save_node = Some(nx);

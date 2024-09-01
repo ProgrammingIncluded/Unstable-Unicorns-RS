@@ -8,7 +8,7 @@ use std::rc::Rc;
 use dyn_clone::DynClone;
 
 // UU
-use crate::state::{Action, ActionType, Board, GameState, History, PhaseType, ReactResult, ReactAction};
+use crate::state::{Action, ActionType, Board, GameState, History, PhaseType, ReactResult, ReactAction, ResponseOp};
 
 #[derive(Debug, Clone)]
 enum CardType {
@@ -148,18 +148,17 @@ impl Card for UnicornPhoenix {
         }
         // Check the type of effect.
         let mut final_result = vec![];
-
-        let mut new_board = cur_state.board.clone();
-        let own_card = new_board.discard.pop().unwrap();
-        assert!(own_card.as_any().is::<Self>(), "Invalid discard stack detected.");
-        new_board.players[player].stable.push(own_card);
-        let effect_action = Action {
-            card: last_action.card.clone(),
-            atype: ActionType::Revive,
-            board: new_board
-        };
-
         if last_action.atype == ActionType::Destroy || last_action.atype == ActionType::Sacrifice {
+            let mut new_board = cur_state.board.clone();
+            let own_card = new_board.discard.pop().unwrap();
+            assert!(own_card.as_any().is::<Self>(), "Invalid discard stack detected.");
+            new_board.players[player].stable.push(own_card);
+            let effect_action = Action {
+                card: last_action.card.clone(),
+                atype: ActionType::Revive,
+                board: new_board
+            };
+
             let hand = &cur_state.board.players[player].hand;
             hand.iter().enumerate().map(|(idx, h)| {
                 let mut new_board = cur_state.board.clone();
@@ -167,16 +166,10 @@ impl Card for UnicornPhoenix {
                 new_board.discard.push(h.clone());
 
 
-                let follow_up = Action {
-                    card: h.clone(),
-                    atype: ActionType::Discard,
-                    board: new_board
-                };
-
                 final_result.push(ReactAction {
                     effect_action: effect_action.clone(),
-                    follow_up: Some(follow_up),
-                    response: vec![]
+                    follow_up: Some(ResponseOp::Discard),
+                    response_user: vec![]
                 });
             }).count();
         }
@@ -293,16 +286,11 @@ impl Card for UnicornPoison {
                 let mut follow_board = latest_board.clone();
                 follow_board.players[p_idx].stable.remove(idx);
                 follow_board.discard.push(k.clone());
-                let follow_up = Action {
-                    card: k.clone(),
-                    atype: ActionType::Destroy,
-                    board: follow_board
-                };
 
                 result.push(ReactAction {
-                    follow_up: Some(follow_up),
+                    follow_up: Some(ResponseOp::Destroy),
                     effect_action: effect_action.clone(),
-                    response: vec![]
+                    response_user: vec![]
                 })
             }
         }
