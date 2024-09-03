@@ -68,7 +68,7 @@ impl Game {
 
         // Add current card to the machine
         board_copy.players[player].hand.push(card.clone());
-        let new_node = GameState::new(&board_copy, &PhaseType::Draw);
+        let new_node = GameState::new(&board_copy, &PhaseType::React);
         let new_action = Action {
             card: card,
             atype: ActionType::Draw,
@@ -121,6 +121,8 @@ impl Game {
         let mut phase_node = GameState::new(&game_state.board, &PhaseType::React);
         let no_idx = self.graph.add_node(phase_node);
         self.graph.add_edge(node_idx, no_idx, ActionEdge { card: edge_action.card.clone(), atype: ActionType::NoOp });
+
+        // We can just resolve the react phase here recursively. :O Just need to check history.
 
         return Ok(());
     }
